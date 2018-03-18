@@ -1,0 +1,88 @@
+﻿#define RN 1;
+#define ON 1;
+#define Bal 200;
+#define Mon 100;
+
+channel public 0;
+channel requServ 0;
+channel requHand 0;
+channel rechServ 0;
+channel payServ 0;
+channel private 0;
+
+enum{car,bus};
+
+Broadcast() = public!1.0 -> Skip;  //r1.o1
+
+OBU() = public?r1.o1 -> requServ!0.1.200.100.car -> private?r1.o1.balance -> Skip;
+
+var info[2][4] = [-1,-1,-1,-1,-1,-1,-1,-1];
+InfoBuffer() = requServ?o1.r1.balance.money.type ->
+assign{
+	info[0][0] = o1;
+	info[0][1] = balance;
+	info[0][2] = money;
+	info[0][3] = type;
+} ->
+requHand!0.200.100.car ->
+remove{
+	info[0][0] = -1;
+	info[0][1] = -1;
+	info[0][2] = -1;
+	info[0][3] = -1;
+} ->
+Skip;
+
+var idHouse[5] = [0,1,2,3,4];
+var flag = -1;
+IdenCheck() = requHand?o1.balance.money.type ->
+match{
+	var x = 0;
+	while(x<5){
+		if(o1 == idHouse[x]){
+			flag = 1;
+			x = x + 5;
+		}
+		x++;
+	}
+} ->
+if(flag == 1){
+	if(money>0){
+		rechServ!0.200.100 -> Skip
+	}
+	else{
+		payServ!0.200.car -> Skip
+	}
+}else{
+	Skip
+};
+
+var value = 0;
+Recharge() = rechServ?o1.balance.money ->
+add{
+	value = balance + money;
+} ->
+private!1.0.value -> Skip;
+
+//Payment() = payServ?o1.balance.type ->
+//minus{
+//	if(type == car){
+//		value = balance - 5;
+//	}else{
+//		value = balance - 10;
+//	}
+//} ->
+//private!1.0.value -> Skip;
+
+RSU() = Broadcast() || InfoBuffer() || IdenCheck() || Recharge();
+System() = OBU() || RSU();
+
+#assert System deadlockfree;
+
+#define Correct value == (Bal + Mon);
+#assert System reaches Correct;
+
+
+
+
+
